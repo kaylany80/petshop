@@ -75,7 +75,7 @@ app.post("/api/atendimento", async (req,res) => {
             }
  
             const [resultado] = await db.execute (
-                `INSERT INTO atendimento (tutor, pet, especie, servico, valor, data_atendimento) VALUES (?,?,?,?,?,?)`, [tutor.trim(), pet.trim(), especie, servico, Number(valor), data]
+                `INSERT INTO atendimentos (tutor, pet, especie, servico, valor, data_atendimento) VALUES (?,?,?,?,?,?)`, [tutor.trim(), pet.trim(), especie, servico, Number(valor), data]
             )
  
             res.status(201).json({mensagem: "Atendimento salvo", id: resultado.insertId})
