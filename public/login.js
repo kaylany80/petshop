@@ -1,22 +1,27 @@
-const e = require("express")
-
-const formlogin = document.getElementById("formlogin")
-formlogin.addEventListener("submit", async (e) => {
+const formLogin = document.getElementById("formLogin");
+formLogin.addEventListener("submit", async(e) =>{
     e.preventDefault();
-    const email = document.getElementById("email").value
-    const senha = document.getElementById("senha").value
+    const email = document.getElementById("email").value.trim();
+    const senha = document.getElementById("senha").value.trim();
+ 
     try{
         const resposta = await fetch("/api/login", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify( {email, senha})
+            body: JSON.stringify({email, senha})
         })
         const resultado = await resposta.json();
         if(!resposta.ok){
-             throw new Error(resultado.erro)
+            throw new Error(resultado.erro)
         }
-        window.location.href ="dashboard.html"
-    } catch (erro) {
-        alert("ERRO!", erro)
+        window.location.href = "dashboard.html"
+    } catch(erro){
+        alert (erro.message)
     }
 })
+   
+fetch ("api/verificar").then(resposta => {
+    if (resposta.ok){
+        window.location.href = "dashboard.html"
+    }
+}).catct(() => {});
