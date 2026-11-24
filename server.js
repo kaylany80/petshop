@@ -124,8 +124,9 @@ function autenticar(req, res, next) {
         return res.status(401).json({ erro: "Sessão inválida ou expirada."})
     }
 }
-app.get("/dashboard", autenticar, (req, res) => {
-    res.sendFile(path.join(__dirname, "private", "dashboard.html"))
+
+app.get("/dashboard.js", autenticar, (req, res) => {
+    res.sendFile(path.join(__dirname, "private", "dashboard.js"))
 })
  
 app.post("/api/logout", (req,res) => {
