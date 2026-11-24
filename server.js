@@ -28,7 +28,7 @@ const db = mysql.createPool({
 })
  
 async function criarBanco() {
-    await db.execute(`CREATE TABLE IF NOT EXISTS(
+    await db.execute(`CREATE TABLE IF NOT EXISTS( atendimentos
         id INT PRIMARY KEY AUTO_INCREMENT,
         tutor VARCHAR(100) NOT NULL,
         pet VARCHAR(100) NOT NULL,
