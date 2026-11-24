@@ -1,211 +1,387 @@
+
 require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken")
+const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 const path = require("path");
-const { buffer } = require("stream/consumers");
-const { throwDeprecation } = require("process");
+
 const app = express();
-app.set("trust proxy", 1)
-app.use(express.json())
-app.use(express.static(path.join(__dirname, "public")))
+
+app.set("trust proxy", 1);
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 app.use(cookieParser());
- const ssl = process.env.DB_SSL_CA ? {ca: process.env.DB_SSL_CA.replace(/\\n/g, "\n"), rejectUnauthorized: true} :
- {rejectUnauthorized: true}
+
+
+
+const ssl = process.env.DB_SSL_CA
+    ? {
+        ca: process.env.DB_SSL_CA.replace(/\\n/g, "\n"),
+        rejectUnauthorized: true
+    }
+    : { rejectUnauthorized: true };
 
 const db = mysql.createPool({
     host: process.env.HOST,
-    port:  Number (process.env.DB_PORT),
-    user: process.env.USER,
+    port: Number(process.env.DB_PORT),
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    sll: ssl,
+    ssl: ssl,
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0
-})
- 
+});
+
+
+
 async function criarBanco() {
-    await db.execute(`CREATE TABLE IF NOT EXISTS( atendimentos
+
+    await db.execute(`CREATE TABLE IF NOT EXISTS atendimento (
         id INT PRIMARY KEY AUTO_INCREMENT,
         tutor VARCHAR(100) NOT NULL,
         pet VARCHAR(100) NOT NULL,
         especie ENUM('Cachorro', 'Gato', 'Outro') NOT NULL,
         servico VARCHAR(100) NOT NULL,
-        valor DECIMAL (10,2) NOT NULL,
+        valor DECIMAL(10,2) NOT NULL,
         data_atendimento DATE NOT NULL,
         criacao_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB`)
- 
-        await db.execute(`CREATE TABLE IF NOT EXISTS usuario
-            (
-            id INT PRIMARY KEY AUTO_INCREMENT,
-            email VARCHAR(70) NOT NULL UNIQUE,
-            senha VARCHAR(255) NOT NULL
-            ) ENGINE = InnoDB`)
-            iniciar()
+    ) ENGINE=InnoDB`);
+
+    await db.execute(`CREATE TABLE IF NOT EXISTS usuario (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        email VARCHAR(70) NOT NULL UNIQUE,
+        senha VARCHAR(255) NOT NULL
+    ) ENGINE=InnoDB`);
+
+    await iniciar();
 }
- 
+
+
+
 async function iniciar() {
     try {
-        const [usuario] = await db.execute("SELECT id FROM usuario WHERE email = ?", [process.env.ADMIN_EMAIL])
+
+        const [usuario] = await db.execute(
+            "SELECT id FROM usuario WHERE email = ?",
+            [process.env.ADMIN_EMAIL]
+        );
+
         if (usuario.length === 0) {
-            const senhaHash = await bcrypt.hash(process.env.ADMIN_SENHA, 10)
-            await db.execute("INSERT INTO usuario (email, senha) VALUES (?,?)", [process.env.ADMIN_EMAIL, senhaHash])
-            console.log("Admin criado")
-            }
-        } catch (erro) {
-            console.log("Não foi possivel conectar com o banco de dados")
+
+            const senhaHash = await bcrypt.hash(
+                process.env.ADMIN_SENHA,
+                10
+            );
+
+            await db.execute(
+                "INSERT INTO usuario (email, senha) VALUES (?,?)",
+                [process.env.ADMIN_EMAIL, senhaHash]
+            );
+
+            console.log("Admin criado");
         }
+
+    } catch (erro) {
+        console.log("Erro ao criar administrador:", erro);
+        throw erro;
     }
- 
-app.post("/api/atendimento", async (req,res) => {
-        try {
-            const {tutor, pet, especie, servico, valor, data} = req.body;
- 
-            if(!tutor || !pet || !especie || !servico || !Number(valor) || !data) {
-                return res.status(400).json ({erro: "Confira todos os campos"})
-            }
- 
-            if (valor <=0) {
-                return res.status(400).json ({erro: 'valor deve ser maior que 0.'})
-            }
- 
-            const [resultado] = await db.execute (
-                `INSERT INTO atendimento (tutor, pet, especie, servico, valor, data_atendimento) VALUES (?,?,?,?,?,?)`, [tutor.trim(), pet.trim(), especie, servico, Number(valor), data]
-            )
- 
-            res.status(201).json({mensagem: "Atendimento salvo", id: resultado.insertId})
-        } catch (erro) {
-            console.log(erro)
-            res.status(500).json({erro: "erro de conexao com o banco"})
+}
+
+
+
+app.post("/api/atendimento", async (req, res) => {
+    try {
+
+        const { tutor, pet, especie, servico, valor, data } = req.body;
+
+        if (!tutor || !pet || !especie || !servico || valor === undefined || !data) {
+            return res.status(400).json({
+                erro: "Confira todos os campos"
+            });
         }
-    })
- 
+
+        if (!Number.isFinite(Number(valor)) || Number(valor) <= 0) {
+            return res.status(400).json({
+                erro: "Valor deve ser maior que 0."
+            });
+        }
+
+        const [resultado] = await db.execute(
+            `INSERT INTO atendimento
+            (tutor, pet, especie, servico, valor, data_atendimento)
+            VALUES (?,?,?,?,?,?)`,
+            [
+                tutor.trim(),
+                pet.trim(),
+                especie,
+                servico,
+                Number(valor),
+                data
+            ]
+        );
+
+        res.status(201).json({
+            mensagem: "Atendimento salvo",
+            id: resultado.insertId
+        });
+
+    } catch (erro) {
+        console.log(erro);
+
+        res.status(500).json({
+            erro: "Erro de conexão com o banco"
+        });
+    }
+});
+
+
+
 app.post("/api/login", async (req, res) => {
     try {
-        const {email, senha} = req.body;
+
+        const { email, senha } = req.body;
+
         if (!email || !senha) {
-            return res.status(400).json({erro: "Informe e-mail e senha!"})
+            return res.status(400).json({
+                erro: "Informe e-mail e senha!"
+            });
         }
-        const [usuario] = await db.execute ("SELECT id, email, senha FROM usuario WHERE email = ?", [email.trim()])
-        if(usuario.length === 0) {
-            return res.status(401).json({erro: "Credenciais incorretas."})
+
+        const [usuario] = await db.execute(
+            "SELECT id, email, senha FROM usuario WHERE email = ?",
+            [email.trim()]
+        );
+
+        if (usuario.length === 0) {
+            return res.status(401).json({
+                erro: "Credenciais incorretas."
+            });
         }
-        const dados = usuario[0]
-        const senhaCorreta = await bcrypt.compare(senha, dados.senha)
-        if(!senhaCorreta) {
-            return res.status(401).json({erro: "Credenciais invalidas"})
+
+        const dados = usuario[0];
+
+        const senhaCorreta = await bcrypt.compare(
+            senha,
+            dados.senha
+        );
+
+        if (!senhaCorreta) {
+            return res.status(401).json({
+                erro: "Credenciais inválidas"
+            });
         }
-        const token = jwt.sign (
-            {id: dados.id, email: dados.email},
+
+        const token = jwt.sign(
+            { id: dados.id, email: dados.email },
             process.env.JWT_SEGREDO,
-            {expiresIn: "1h"}
-        )
+            { expiresIn: "1h" }
+        );
+
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE === "production",
+            secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
-            maxAge: 60*60*1000
-        })
- 
-        res.json({mensagem: "Login Realizado"})
-        } catch(erro) {
-        res.status(500).json({erro: "Erro de conexao com o banco de dados"})
-        }
-    })
- 
-function autenticar(req, res, next) {
-    const token = req.cookies.token;
-    if(!token) {
-        return res.status(401).json({erro: "Você precisa fazer login para acessar esta pagina"})
+            maxAge: 60 * 60 * 1000
+        });
+
+        res.json({
+            mensagem: "Login realizado"
+        });
+
+    } catch (erro) {
+        console.log(erro);
+
+        res.status(500).json({
+            erro: "Erro de conexão com o banco de dados"
+        });
     }
- 
+});
+
+// AUTENTICAR
+
+function autenticar(req, res, next) {
+
+    const token = req.cookies.token;
+
+    if (!token) {
+        return res.status(401).json({
+            erro: "Você precisa fazer login para acessar esta página"
+        });
+    }
+
     try {
-        req.usuario = jwt.verify(token, process.env.JWT_SEGREDO);
-        next()
-    } catch(erro) {
-        res.clearCookie("token")
-        res.redirect("/login.html")
-        return res.status(401).json({erro: "Sessão inválida ou expirada."})
+
+        req.usuario = jwt.verify(
+            token,
+            process.env.JWT_SEGREDO
+        );
+
+        next();
+
+    } catch (erro) {
+
+        res.clearCookie("token");
+
+        return res.status(401).json({
+            erro: "Sessão inválida ou expirada."
+        });
     }
 }
- 
+
+// DASHBOARD
+
 app.get("/dashboard", autenticar, (req, res) => {
-    res.sendFile(path.join(__dirname, "private", "dashboard.html"))
-})
- 
+    res.sendFile(
+        path.join(__dirname, "private", "dashboard.html")
+    );
+});
+
+// VERIFICAR LOGIN
+
 app.get("/api/verificar", autenticar, (req, res) => {
-    res.json({autenticado: true, usuario: req.usuario})
-})
- 
+    res.json({
+        autenticado: true,
+        usuario: req.usuario
+    });
+});
+
+// CONECTAR COM PYTHON
+
 async function conectarPython(endpoint, atendimentos, res, tipo) {
     try {
-    const url = process.env.PYTHON_API_URL
-    const resposta =  await fetch (`${url.replace(/\/$/, "")}${endpoint}`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    })
-    if (!resposta.ok) {
-        throw new Error(resposta.status)
-    }
-    const arquivo = Buffer.from(await resposta.arrayBuffer ());
-    if (tipo === "pdf") {
-        res.setHeader("Content-Type", "application/pdf")
-        res.setHeader("Content-Disposition", "attachement; filename='relatorio-petshop.pdf'")
-    } else {
-        res.setHeader("Content-Type", "image/png")
-        res.setHeader("Content-Disposition", "inline; filename=graficos.png")
-    }
-    res.send(arquivo);
+
+        const url = process.env.PYTHON_API_URL;
+
+        const resposta = await fetch(
+            `${url.replace(/\/+$/, "")}${endpoint}`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ atendimentos })
+            }
+        );
+
+        if (!resposta.ok) {
+            throw new Error(resposta.status);
+        }
+
+        const arquivo = Buffer.from(
+            await resposta.arrayBuffer()
+        );
+
+        if (tipo === "pdf") {
+
+            res.setHeader("Content-Type", "application/pdf");
+
+            res.setHeader(
+                "Content-Disposition",
+                "attachment; filename=relatorio-petshop.pdf"
+            );
+
+        } else {
+
+            res.setHeader("Content-Type", "image/png");
+
+            res.setHeader(
+                "Content-Disposition",
+                "inline; filename=graficos.png"
+            );
+        }
+
+        res.send(arquivo);
+
     } catch (erro) {
-        console.log(erro)
-        res.status(502).json({erro: "Não foi possivel conectar com o servidor python"})
+        console.log(erro);
+
+        res.status(502).json({
+            erro: "Não foi possível conectar com o servidor Python"
+        });
     }
 }
- 
+
+// LOGOUT
+
 app.post("/api/logout", (req, res) => {
-    res.clearCookie("token", {httpOnly: true, sameSite: "strict", secure: process.env.NODE === "production"})
-        res.json({mensagem: "logout efetuado"})
-})
- 
+
+    res.clearCookie("token", {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production"
+    });
+
+    res.json({
+        mensagem: "logout efetuado"
+    });
+});
+
+
+
 app.get("/api/graficos", autenticar, async (req, res) => {
     try {
-        const [atendimentos] = await db.execute(`SELECT tutor, pet, especie, servico FROM atendimento`)
-        await conectarPython("/graficos", atendimentos, res, "iamgem")
-        } catch (erro) {
-            console.log(erro)
-            res.status(500).json({ erro: "Erro de comunicação com o Python" })
-        }
-    })
- 
-app.get("/api/pdf", autenticar, async (req,res) => {
-    try {
-        const [atendimentos] = await db.execute(`
-            SELECT tutor, pet, especie, servico, valor FROM atendimento ORDER_BY criacao_em
-            `)
-            await conectarPython("/pdf", atendimentos)
-            const resposta = await fetch("http://127.0.0.1:5001//pdf", {
-                method: "POST",
-                headers: {"Content-Type": "application.json"},
-                body: JSON.stringify({atendimentos})
-            })
-            if(!resposta.ok) {
-                throw new Error("O python não conseguiu gerar o pdf")
-            }
-            const pdf = Buffer.from(await resposta.arrayBuffer())
-            res.setHeader("Content-Type", "application/pdf")
-            res.setHeader("Content-Disposition", "attachment; filename='relatorio-petshop.pdf'")
-            res.send(pdf)
-    }catch(erro) {
-        res.status(500).json({erro: "Erro de comunicação com o python"})
+
+        const [atendimentos] = await db.execute(
+            "SELECT tutor, pet, especie, servico FROM atendimento"
+        );
+
+        await conectarPython(
+            "/graficos",
+            atendimentos,
+            res,
+            "imagem"
+        );
+
+    } catch (erro) {
+        console.log(erro);
+
+        res.status(500).json({
+            erro: "Erro de comunicação com o Python"
+        });
     }
-})
-const PORT = process.env.PORT
+});
+
+
+
+app.get("/api/pdf", autenticar, async (req, res) => {
+    try {
+
+        const [atendimentos] = await db.execute(`
+            SELECT tutor, pet, especie, servico, valor
+            FROM atendimento
+            ORDER BY criacao_em
+        `);
+
+        await conectarPython(
+            "/pdf",
+            atendimentos,
+            res,
+            "pdf"
+        );
+
+    } catch (erro) {
+        console.log(erro);
+
+        res.status(500).json({
+            erro: "Erro de comunicação com o Python"
+        });
+    }
+});
+
+
+
+const PORT = process.env.PORT || 3000;
+
 criarBanco()
-.then(() => app.listen(PORT, "0.0.0.0", () => console.log ("servidor rodando")))
-.catch((erro) => { console.log(erro)
-  process.exit(1)
-})
+    .then(() => {
+        app.listen(PORT, "0.0.0.0", () => {
+            console.log("servidor rodando");
+        });
+    })
+    .catch((erro) => {
+        console.log(erro);
+        process.exit(1);
+    });
